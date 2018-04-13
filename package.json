@@ -56,7 +56,7 @@
     "husky": "^0.x",
     "istanbul": "^0.x",
     "lcov-result-merger": "^2.x",
-    "mocha": "^5.x",
+    "mocha": "^5.1.0",
     "mysql2": "^1.x",
     "pg": "^7.x",
     "pg-hstore": "^2.x",
