@@ -2,13 +2,13 @@
 
 const chai = require('chai'),
   expect = chai.expect,
-  Support = require(__dirname + '/../../support'),
+  Support = require('../../support'),
   Sequelize = Support.Sequelize,
   Op = Sequelize.Op,
   Promise = Sequelize.Promise,
   dialect = Support.getTestDialect(),
-  DataTypes = require(__dirname + '/../../../../lib/data-types'),
-  sequelize = require(__dirname + '/../../../../lib/sequelize');
+  DataTypes = require('../../../../lib/data-types'),
+  sequelize = require('../../../../lib/sequelize');
 
 if (dialect.match(/^postgres/)) {
   describe('[POSTGRES Specific] DAO', () => {
@@ -93,11 +93,11 @@ if (dialect.match(/^postgres/)) {
 
     describe('json', () => {
       it('should be able to retrieve a row with ->> operator', function() {
-        return this.sequelize.Promise.all([
+        return Sequelize.Promise.all([
           this.User.create({ username: 'swen', emergency_contact: { name: 'kate' } }),
           this.User.create({ username: 'anna', emergency_contact: { name: 'joe' } })])
           .then(() => {
-            return this.User.find({ where: sequelize.json("emergency_contact->>'name'", 'kate'), attributes: ['username', 'emergency_contact'] });
+            return this.User.findOne({ where: sequelize.json("emergency_contact->>'name'", 'kate'), attributes: ['username', 'emergency_contact'] });
           })
           .then(user => {
             expect(user.emergency_contact.name).to.equal('kate');
@@ -105,11 +105,11 @@ if (dialect.match(/^postgres/)) {
       });
 
       it('should be able to query using the nested query language', function() {
-        return this.sequelize.Promise.all([
+        return Sequelize.Promise.all([
           this.User.create({ username: 'swen', emergency_contact: { name: 'kate' } }),
           this.User.create({ username: 'anna', emergency_contact: { name: 'joe' } })])
           .then(() => {
-            return this.User.find({
+            return this.User.findOne({
               where: sequelize.json({ emergency_contact: { name: 'kate' } })
             });
           })
@@ -119,11 +119,11 @@ if (dialect.match(/^postgres/)) {
       });
 
       it('should be able to query using dot syntax', function() {
-        return this.sequelize.Promise.all([
+        return Sequelize.Promise.all([
           this.User.create({ username: 'swen', emergency_contact: { name: 'kate' } }),
           this.User.create({ username: 'anna', emergency_contact: { name: 'joe' } })])
           .then(() => {
-            return this.User.find({ where: sequelize.json('emergency_contact.name', 'joe') });
+            return this.User.findOne({ where: sequelize.json('emergency_contact.name', 'joe') });
           })
           .then(user => {
             expect(user.emergency_contact.name).to.equal('joe');
@@ -131,11 +131,11 @@ if (dialect.match(/^postgres/)) {
       });
 
       it('should be able to query using dot syntax with uppercase name', function() {
-        return this.sequelize.Promise.all([
+        return Sequelize.Promise.all([
           this.User.create({ username: 'swen', emergencyContact: { name: 'kate' } }),
           this.User.create({ username: 'anna', emergencyContact: { name: 'joe' } })])
           .then(() => {
-            return this.User.find({
+            return this.User.findOne({
               attributes: [[sequelize.json('emergencyContact.name'), 'contactName']],
               where: sequelize.json('emergencyContact.name', 'joe')
             });
@@ -153,10 +153,10 @@ if (dialect.match(/^postgres/)) {
             expect(user.isNewRecord).to.equal(false);
           })
           .then(() => {
-            return this.User.find({ where: { username: 'swen' } });
+            return this.User.findOne({ where: { username: 'swen' } });
           })
           .then(() => {
-            return this.User.find({ where: sequelize.json('emergency_contact.value', text) });
+            return this.User.findOne({ where: sequelize.json('emergency_contact.value', text) });
           })
           .then(user => {
             expect(user.username).to.equal('swen');
@@ -171,10 +171,10 @@ if (dialect.match(/^postgres/)) {
             expect(!user.isNewRecord).to.equal(true);
           })
           .then(() => {
-            return this.User.find({ where: { username: 'swen' } });
+            return this.User.findOne({ where: { username: 'swen' } });
           })
           .then(() => {
-            return this.User.find({ where: sequelize.json('emergency_contact.value', text) });
+            return this.User.findOne({ where: sequelize.json('emergency_contact.value', text) });
           })
           .then(user => {
             expect(user.username).to.equal('swen');
@@ -190,15 +190,15 @@ if (dialect.match(/^postgres/)) {
         });
       });
 
-      it('should stringify hstore with insert', function() {
+      it('should NOT stringify hstore with insert', function() {
         return this.User.create({
           username: 'bob',
           email: ['myemail@email.com'],
           settings: { mailing: false, push: 'facebook', frequency: 3 }
         }, {
           logging(sql) {
-            const expected = '\'"mailing"=>"false","push"=>"facebook","frequency"=>"3"\',\'"default"=>"\'\'value\'\'"\'';
-            expect(sql.indexOf(expected)).not.to.equal(-1);
+            const unexpected = '\'"mailing"=>"false","push"=>"facebook","frequency"=>"3"\',\'"default"=>"\'\'value\'\'"\'';
+            expect(sql).not.to.include(unexpected);
           }
         });
       });
@@ -364,6 +364,25 @@ if (dialect.match(/^postgres/)) {
         }).then(enums => {
           expect(enums).to.have.length(1);
           expect(enums[0].enum_value).to.equal('{neutral,happy,sad,ecstatic,meh,joyful}');
+        });
+      });
+
+      it('should be able to add multiple values with different order', function() {
+        let User = this.sequelize.define('UserEnums', {
+          priority: DataTypes.ENUM('1', '2', '6')
+        });
+
+        return User.sync({ force: true }).then(() => {
+          User = this.sequelize.define('UserEnums', {
+            priority: DataTypes.ENUM('0', '1', '2', '3', '4', '5', '6', '7')
+          });
+
+          return User.sync();
+        }).then(() => {
+          return this.sequelize.getQueryInterface().pgListEnums(User.getTableName());
+        }).then(enums => {
+          expect(enums).to.have.length(1);
+          expect(enums[0].enum_value).to.equal('{0,1,2,3,4,5,6,7}');
         });
       });
 
@@ -538,7 +557,7 @@ if (dialect.match(/^postgres/)) {
 
           return User.create({ aNumber: 2147483647 }).then(user => {
             expect(user.aNumber).to.equal(2147483647);
-            return User.find({ where: { aNumber: 2147483647 } }).then(_user => {
+            return User.findOne({ where: { aNumber: 2147483647 } }).then(_user => {
               expect(_user.aNumber).to.equal(2147483647);
             });
           });
@@ -549,7 +568,7 @@ if (dialect.match(/^postgres/)) {
 
           return User.create({ aNumber: -2147483647 }).then(user => {
             expect(user.aNumber).to.equal(-2147483647);
-            return User.find({ where: { aNumber: -2147483647 } }).then(_user => {
+            return User.findOne({ where: { aNumber: -2147483647 } }).then(_user => {
               expect(_user.aNumber).to.equal(-2147483647);
             });
           });
@@ -570,7 +589,7 @@ if (dialect.match(/^postgres/)) {
 
           return User.create({ aNumber: '9223372036854775807' }).then(user => {
             expect(user.aNumber).to.equal('9223372036854775807');
-            return User.find({ where: { aNumber: '9223372036854775807' } }).then(_user => {
+            return User.findOne({ where: { aNumber: '9223372036854775807' } }).then(_user => {
               expect(_user.aNumber).to.equal('9223372036854775807');
             });
           });
@@ -581,7 +600,7 @@ if (dialect.match(/^postgres/)) {
 
           return User.create({ aNumber: '-9223372036854775807' }).then(user => {
             expect(user.aNumber).to.equal('-9223372036854775807');
-            return User.find({ where: { aNumber: '-9223372036854775807' } }).then(_user => {
+            return User.findOne({ where: { aNumber: '-9223372036854775807' } }).then(_user => {
               expect(_user.aNumber).to.equal('-9223372036854775807');
             });
           });
@@ -597,12 +616,13 @@ if (dialect.match(/^postgres/)) {
         return this.User.sync({ force: true });
       });
 
-      it('should use postgres "TIMESTAMP WITH TIME ZONE" instead of "DATETIME"', function() {
+      it('should use bind params instead of "TIMESTAMP WITH TIME ZONE"', function() {
         return this.User.create({
           dates: []
         }, {
           logging(sql) {
-            expect(sql.indexOf('TIMESTAMP WITH TIME ZONE')).to.be.greaterThan(0);
+            expect(sql).not.to.contain('TIMESTAMP WITH TIME ZONE');
+            expect(sql).not.to.contain('DATETIME');
           }
         });
       });
@@ -624,7 +644,7 @@ if (dialect.match(/^postgres/)) {
           expect(newUser.settings).to.deep.equal({ created: '"value"' });
 
           // Check to see if updating an hstore field works
-          return newUser.updateAttributes({ settings: { should: 'update', to: 'this', first: 'place' } }).then(oldUser => {
+          return newUser.update({ settings: { should: 'update', to: 'this', first: 'place' } }).then(oldUser => {
             // Postgres always returns keys in alphabetical order (ascending)
             expect(oldUser.settings).to.deep.equal({ first: 'place', should: 'update', to: 'this' });
           });
@@ -639,7 +659,7 @@ if (dialect.match(/^postgres/)) {
           email: ['myemail@email.com'],
           phones: [{ number: '123456789', type: 'mobile' }, { number: '987654321', type: 'landline' }, { number: '8675309', type: "Jenny's" }, { number: '5555554321', type: '"home\n"' }]
         }).then(() => {
-          return User.findById(1).then(user => {
+          return User.findByPk(1).then(user => {
             expect(user.phones.length).to.equal(4);
             expect(user.phones[1].number).to.equal('987654321');
             expect(user.phones[2].type).to.equal("Jenny's");
@@ -656,7 +676,7 @@ if (dialect.match(/^postgres/)) {
           email: ['myemail@email.com'],
           settings: { mailing: true, push: 'facebook', frequency: 3 }
         }]).then(() => {
-          return User.findById(1).then(user => {
+          return User.findByPk(1).then(user => {
             expect(user.settings.mailing).to.equal('true');
           });
         });
@@ -681,7 +701,7 @@ if (dialect.match(/^postgres/)) {
       it('should update hstore correctly and return the affected rows', function() {
         return this.User.create({ username: 'user', email: ['foo@bar.com'], settings: { test: '"value"' } }).then(oldUser => {
           // Update the user and check that the returned object's fields have been parsed by the hstore library
-          return this.User.update({ settings: { should: 'update', to: 'this', first: 'place' } }, { where: oldUser.where(), returning: true }).spread((count, users) => {
+          return this.User.update({ settings: { should: 'update', to: 'this', first: 'place' } }, { where: oldUser.where(), returning: true }).then(([count, users]) => {
             expect(count).to.equal(1);
             expect(users[0].settings).to.deep.equal({ should: 'update', to: 'this', first: 'place' });
           });
@@ -693,7 +713,7 @@ if (dialect.match(/^postgres/)) {
 
         return this.User.create(data)
           .then(() => {
-            return this.User.find({ where: { username: 'user' } });
+            return this.User.findOne({ where: { username: 'user' } });
           })
           .then(user => {
             // Check that the hstore fields are the same when retrieving the user
@@ -707,7 +727,7 @@ if (dialect.match(/^postgres/)) {
         return this.User.create(data)
           .then(() => {
             // Check that the hstore fields are the same when retrieving the user
-            return this.User.find({ where: { username: 'user' } });
+            return this.User.findOne({ where: { username: 'user' } });
           }).then(user => {
             expect(user.phones).to.deep.equal(data.phones);
           });
@@ -749,7 +769,7 @@ if (dialect.match(/^postgres/)) {
               });
           })
           .then(() => {
-            return this.User.find({ where: { username: 'user1' }, include: [HstoreSubmodel] });
+            return this.User.findOne({ where: { username: 'user1' }, include: [HstoreSubmodel] });
           })
           .then(user => {
             expect(user.hasOwnProperty('hstoreSubmodels')).to.be.ok;
@@ -764,21 +784,25 @@ if (dialect.match(/^postgres/)) {
           // Check to see if the default value for a range field works
 
           expect(newUser.acceptable_marks.length).to.equal(2);
-          expect(newUser.acceptable_marks[0]).to.equal('0.65'); // lower bound
-          expect(newUser.acceptable_marks[1]).to.equal('1'); // upper bound
-          expect(newUser.acceptable_marks.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
-          expect(newUser.course_period[0] instanceof Date).to.be.ok; // lower bound
-          expect(newUser.course_period[1] instanceof Date).to.be.ok; // upper bound
-          expect(newUser.course_period[0]).to.equalTime(period[0]); // lower bound
-          expect(newUser.course_period[1]).to.equalTime(period[1]); // upper bound
-          expect(newUser.course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
+          expect(newUser.acceptable_marks[0].value).to.equal('0.65'); // lower bound
+          expect(newUser.acceptable_marks[1].value).to.equal('1'); // upper bound
+          expect(newUser.acceptable_marks[0].inclusive).to.deep.equal(true); // inclusive
+          expect(newUser.acceptable_marks[1].inclusive).to.deep.equal(false); // exclusive
+          expect(newUser.course_period[0].value instanceof Date).to.be.ok; // lower bound
+          expect(newUser.course_period[1].value instanceof Date).to.be.ok; // upper bound
+          expect(newUser.course_period[0].value).to.equalTime(period[0]); // lower bound
+          expect(newUser.course_period[1].value).to.equalTime(period[1]); // upper bound
+          expect(newUser.course_period[0].inclusive).to.deep.equal(true); // inclusive
+          expect(newUser.course_period[1].inclusive).to.deep.equal(false); // exclusive
 
           // Check to see if updating a range field works
-          return newUser.updateAttributes({ acceptable_marks: [0.8, 0.9] }).then(() => {
-            expect(newUser.acceptable_marks.length).to.equal(2);
-            expect(newUser.acceptable_marks[0]).to.equal(0.8); // lower bound
-            expect(newUser.acceptable_marks[1]).to.equal(0.9); // upper bound
-          });
+          return newUser.update({ acceptable_marks: [0.8, 0.9] })
+            .then(() => newUser.reload()) // Ensure the acceptable_marks array is loaded with the complete range definition
+            .then(() => {
+              expect(newUser.acceptable_marks.length).to.equal(2);
+              expect(newUser.acceptable_marks[0].value).to.equal('0.8'); // lower bound
+              expect(newUser.acceptable_marks[1].value).to.equal('0.9'); // upper bound
+            });
         });
       });
 
@@ -794,18 +818,18 @@ if (dialect.match(/^postgres/)) {
           email: ['myemail@email.com'],
           holidays
         }).then(() => {
-          return User.findById(1).then(user => {
+          return User.findByPk(1).then(user => {
             expect(user.holidays.length).to.equal(2);
             expect(user.holidays[0].length).to.equal(2);
-            expect(user.holidays[0][0] instanceof Date).to.be.ok;
-            expect(user.holidays[0][1] instanceof Date).to.be.ok;
-            expect(user.holidays[0][0]).to.equalTime(holidays[0][0]);
-            expect(user.holidays[0][1]).to.equalTime(holidays[0][1]);
+            expect(user.holidays[0][0].value instanceof Date).to.be.ok;
+            expect(user.holidays[0][1].value instanceof Date).to.be.ok;
+            expect(user.holidays[0][0].value).to.equalTime(holidays[0][0]);
+            expect(user.holidays[0][1].value).to.equalTime(holidays[0][1]);
             expect(user.holidays[1].length).to.equal(2);
-            expect(user.holidays[1][0] instanceof Date).to.be.ok;
-            expect(user.holidays[1][1] instanceof Date).to.be.ok;
-            expect(user.holidays[1][0]).to.equalTime(holidays[1][0]);
-            expect(user.holidays[1][1]).to.equalTime(holidays[1][1]);
+            expect(user.holidays[1][0].value instanceof Date).to.be.ok;
+            expect(user.holidays[1][1].value instanceof Date).to.be.ok;
+            expect(user.holidays[1][0].value).to.equalTime(holidays[1][0]);
+            expect(user.holidays[1][1].value).to.equalTime(holidays[1][1]);
           });
         });
       });
@@ -819,12 +843,13 @@ if (dialect.match(/^postgres/)) {
           email: ['myemail@email.com'],
           course_period: period
         }]).then(() => {
-          return User.findById(1).then(user => {
-            expect(user.course_period[0] instanceof Date).to.be.ok;
-            expect(user.course_period[1] instanceof Date).to.be.ok;
-            expect(user.course_period[0]).to.equalTime(period[0]); // lower bound
-            expect(user.course_period[1]).to.equalTime(period[1]); // upper bound
-            expect(user.course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
+          return User.findByPk(1).then(user => {
+            expect(user.course_period[0].value instanceof Date).to.be.ok;
+            expect(user.course_period[1].value instanceof Date).to.be.ok;
+            expect(user.course_period[0].value).to.equalTime(period[0]);  // lower bound
+            expect(user.course_period[1].value).to.equalTime(period[1]);  // upper bound
+            expect(user.course_period[0].inclusive).to.deep.equal(true);  // inclusive
+            expect(user.course_period[1].inclusive).to.deep.equal(false); // exclusive
           });
         });
       });
@@ -836,25 +861,29 @@ if (dialect.match(/^postgres/)) {
         return User.create({ username: 'user', email: ['foo@bar.com'], course_period: period }).then(newUser => {
           // Check to see if the default value for a range field works
           expect(newUser.acceptable_marks.length).to.equal(2);
-          expect(newUser.acceptable_marks[0]).to.equal('0.65'); // lower bound
-          expect(newUser.acceptable_marks[1]).to.equal('1'); // upper bound
-          expect(newUser.acceptable_marks.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
-          expect(newUser.course_period[0] instanceof Date).to.be.ok;
-          expect(newUser.course_period[1] instanceof Date).to.be.ok;
-          expect(newUser.course_period[0]).to.equalTime(period[0]); // lower bound
-          expect(newUser.course_period[1]).to.equalTime(period[1]); // upper bound
-          expect(newUser.course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
+          expect(newUser.acceptable_marks[0].value).to.equal('0.65'); // lower bound
+          expect(newUser.acceptable_marks[1].value).to.equal('1'); // upper bound
+          expect(newUser.acceptable_marks[0].inclusive).to.deep.equal(true); // inclusive
+          expect(newUser.acceptable_marks[1].inclusive).to.deep.equal(false); // exclusive
+          expect(newUser.course_period[0].value instanceof Date).to.be.ok;
+          expect(newUser.course_period[1].value instanceof Date).to.be.ok;
+          expect(newUser.course_period[0].value).to.equalTime(period[0]); // lower bound
+          expect(newUser.course_period[1].value).to.equalTime(period[1]); // upper bound
+          expect(newUser.course_period[0].inclusive).to.deep.equal(true);  // inclusive
+          expect(newUser.course_period[1].inclusive).to.deep.equal(false); // exclusive
+
 
           const period2 = [new Date(2015, 1, 1), new Date(2015, 10, 30)];
 
           // Check to see if updating a range field works
           return User.update({ course_period: period2 }, { where: newUser.where() }).then(() => {
             return newUser.reload().then(() => {
-              expect(newUser.course_period[0] instanceof Date).to.be.ok;
-              expect(newUser.course_period[1] instanceof Date).to.be.ok;
-              expect(newUser.course_period[0]).to.equalTime(period2[0]); // lower bound
-              expect(newUser.course_period[1]).to.equalTime(period2[1]); // upper bound
-              expect(newUser.course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
+              expect(newUser.course_period[0].value instanceof Date).to.be.ok;
+              expect(newUser.course_period[1].value instanceof Date).to.be.ok;
+              expect(newUser.course_period[0].value).to.equalTime(period2[0]); // lower bound
+              expect(newUser.course_period[1].value).to.equalTime(period2[1]); // upper bound
+              expect(newUser.course_period[0].inclusive).to.deep.equal(true);  // inclusive
+              expect(newUser.course_period[1].inclusive).to.deep.equal(false); // exclusive
             });
           });
         });
@@ -871,13 +900,14 @@ if (dialect.match(/^postgres/)) {
         }).then(oldUser => {
           // Update the user and check that the returned object's fields have been parsed by the range parser
           return User.update({ course_period: period }, { where: oldUser.where(), returning: true })
-            .spread((count, users) => {
+            .then(([count, users]) => {
               expect(count).to.equal(1);
-              expect(users[0].course_period[0] instanceof Date).to.be.ok;
-              expect(users[0].course_period[1] instanceof Date).to.be.ok;
-              expect(users[0].course_period[0]).to.equalTime(period[0]); // lower bound
-              expect(users[0].course_period[1]).to.equalTime(period[1]); // upper bound
-              expect(users[0].course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
+              expect(users[0].course_period[0].value instanceof Date).to.be.ok;
+              expect(users[0].course_period[1].value instanceof Date).to.be.ok;
+              expect(users[0].course_period[0].value).to.equalTime(period[0]); // lower bound
+              expect(users[0].course_period[1].value).to.equalTime(period[1]); // upper bound
+              expect(users[0].course_period[0].inclusive).to.deep.equal(true);  // inclusive
+              expect(users[0].course_period[1].inclusive).to.deep.equal(false); // exclusive
             });
         });
       });
@@ -885,14 +915,13 @@ if (dialect.match(/^postgres/)) {
       it('should read range correctly', function() {
         const User = this.User;
 
-        const course_period = [new Date(2015, 1, 1), new Date(2015, 10, 30)];
-        course_period.inclusive = [false, false];
+        const course_period = [{ value: new Date(2015, 1, 1), inclusive: false }, { value: new Date(2015, 10, 30), inclusive: false }];
 
         const data = { username: 'user', email: ['foo@bar.com'], course_period };
 
         return User.create(data)
           .then(() => {
-            return User.find({ where: { username: 'user' } });
+            return User.findOne({ where: { username: 'user' } });
           })
           .then(user => {
             // Check that the range fields are the same when retrieving the user
@@ -903,19 +932,15 @@ if (dialect.match(/^postgres/)) {
       it('should read range array correctly', function() {
         const User = this.User;
         const holidays = [
-          [new Date(2015, 3, 1, 10), new Date(2015, 3, 15)],
-          [new Date(2015, 8, 1), new Date(2015, 9, 15)]
+          [{ value: new Date(2015, 3, 1, 10), inclusive: true }, { value: new Date(2015, 3, 15), inclusive: true }],
+          [{ value: new Date(2015, 8, 1), inclusive: true }, { value: new Date(2015, 9, 15), inclusive: true }]
         ];
-
-        holidays[0].inclusive = [true, true];
-        holidays[1].inclusive = [true, true];
-
         const data = { username: 'user', email: ['foo@bar.com'], holidays };
 
         return User.create(data)
           .then(() => {
             // Check that the range fields are the same when retrieving the user
-            return User.find({ where: { username: 'user' } });
+            return User.findOne({ where: { username: 'user' } });
           }).then(user => {
             expect(user.holidays).to.deep.equal(data.holidays);
           });
@@ -938,12 +963,14 @@ if (dialect.match(/^postgres/)) {
             return User.findAll({ order: ['username'] });
           })
           .then(users => {
-            expect(users[0].course_period[0]).to.equalTime(periods[0][0]); // lower bound
-            expect(users[0].course_period[1]).to.equalTime(periods[0][1]); // upper bound
-            expect(users[0].course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
-            expect(users[1].course_period[0]).to.equalTime(periods[1][0]); // lower bound
-            expect(users[1].course_period[1]).to.equalTime(periods[1][1]); // upper bound
-            expect(users[1].course_period.inclusive).to.deep.equal([true, false]); // inclusive, exclusive
+            expect(users[0].course_period[0].value).to.equalTime(periods[0][0]); // lower bound
+            expect(users[0].course_period[1].value).to.equalTime(periods[0][1]); // upper bound
+            expect(users[0].course_period[0].inclusive).to.deep.equal(true); // inclusive
+            expect(users[0].course_period[1].inclusive).to.deep.equal(false); // exclusive
+            expect(users[1].course_period[0].value).to.equalTime(periods[1][0]); // lower bound
+            expect(users[1].course_period[1].value).to.equalTime(periods[1][1]); // upper bound
+            expect(users[1].course_period[0].inclusive).to.deep.equal(true); // inclusive
+            expect(users[1].course_period[1].inclusive).to.deep.equal(false); // exclusive
           });
       });
 
@@ -968,14 +995,14 @@ if (dialect.match(/^postgres/)) {
               });
           })
           .then(() => {
-            return this.User.find({ where: { username: 'user' }, include: [HolidayDate] });
+            return this.User.findOne({ where: { username: 'user' }, include: [HolidayDate] });
           })
           .then(user => {
             expect(user.hasOwnProperty('holidayDates')).to.be.ok;
             expect(user.holidayDates.length).to.equal(1);
             expect(user.holidayDates[0].period.length).to.equal(2);
-            expect(user.holidayDates[0].period[0]).to.equalTime(period[0]);
-            expect(user.holidayDates[0].period[1]).to.equalTime(period[1]);
+            expect(user.holidayDates[0].period[0].value).to.equalTime(period[0]);
+            expect(user.holidayDates[0].period[1].value).to.equalTime(period[1]);
           });
       });
     });
@@ -992,7 +1019,7 @@ if (dialect.match(/^postgres/)) {
       const point1 = { type: 'Point', coordinates: [39.807222, -76.984722] };
       const point2 = { type: 'Point', coordinates: [39.828333, -77.232222] };
       return User.create({ username: 'user', email: ['foo@bar.com'], location: point1 }).then(oldUser => {
-        return User.update({ location: point2 }, { where: { username: oldUser.username }, returning: true }).spread((count, updatedUsers) => {
+        return User.update({ location: point2 }, { where: { username: oldUser.username }, returning: true }).then(([, updatedUsers]) => {
           expect(updatedUsers[0].location).to.deep.eql(point2);
         });
       });
@@ -1003,7 +1030,7 @@ if (dialect.match(/^postgres/)) {
       const point = { type: 'Point', coordinates: [39.807222, -76.984722] };
 
       return User.create({ username: 'user', email: ['foo@bar.com'], location: point }).then(user => {
-        return User.find({ where: { username: user.username } });
+        return User.findOne({ where: { username: user.username } });
       }).then(user => {
         expect(user.location).to.deep.eql(point);
       });
@@ -1032,7 +1059,7 @@ if (dialect.match(/^postgres/)) {
               expect(user.fullName).to.equal('John Smith');
 
               // We can query by non-quoted identifiers
-              return this.User.find({
+              return this.User.findOne({
                 where: { fullName: 'John Smith' }
               }).then(user2 => {
                 // We can map values back to non-quoted identifiers
@@ -1146,19 +1173,19 @@ if (dialect.match(/^postgres/)) {
           })
           .then(() => {
             return Promise.all([
-              this.Student.findById(1)
+              this.Student.findByPk(1)
                 .then(Harry => {
                   return Harry.setClasses([1, 2, 3]);
                 }),
-              this.Student.findById(2)
+              this.Student.findByPk(2)
                 .then(Ron => {
                   return Ron.setClasses([1, 2]);
                 }),
-              this.Student.findById(3)
+              this.Student.findByPk(3)
                 .then(Ginny => {
                   return Ginny.setClasses([2, 3]);
                 }),
-              this.Student.findById(4)
+              this.Student.findByPk(4)
                 .then(Hermione => {
                   return Hermione.setClasses([1, 2, 3]);
                 })
